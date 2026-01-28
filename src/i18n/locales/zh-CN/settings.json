@@ -303,6 +303,12 @@
       "button": "登录",
       "reLoginButton": "重新登录"
     },
+    "claudeSdkPath": {
+      "label": "Claude SDK 可执行文件路径",
+      "description": "Claude Code 可执行文件的路径（例如：/usr/local/bin/claude-code 或 ducc）",
+      "hint": "留空则使用默认路径",
+      "save": "保存"
+    },
     "error": "错误：{{error}}"
   },
   "permissions": {

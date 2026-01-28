@@ -3,6 +3,13 @@ export const authenticatedFetch = (url, options = {}) => {
   const isPlatform = import.meta.env.VITE_IS_PLATFORM === 'true';
   const token = localStorage.getItem('auth-token');
 
+  console.log('[authenticatedFetch]', {
+    url,
+    isPlatform,
+    hasToken: !!token,
+    tokenPrefix: token ? token.substring(0, 10) + '...' : 'none'
+  });
+
   const defaultHeaders = {};
 
   // Only set Content-Type for non-FormData requests

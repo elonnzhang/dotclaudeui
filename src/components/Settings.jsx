@@ -125,6 +125,9 @@ function Settings({ isOpen, onClose, projects = [], initialTab = 'agents' }) {
     error: null
   });
 
+  // Claude SDK Path configuration
+  const [claudeSdkPath, setClaudeSdkPath] = useState('');
+
   // Common tool patterns for Claude
   const commonTools = [
     'Bash(git log:*)',
@@ -583,12 +586,61 @@ function Settings({ isOpen, onClose, projects = [], initialTab = 'agents' }) {
 
       // Load Codex MCP servers
       await fetchCodexMcpServers();
+
+      // Load Claude SDK configuration
+      await fetchClaudeSdkConfig();
     } catch (error) {
       console.error('Error loading tool settings:', error);
       setAllowedTools([]);
       setDisallowedTools([]);
       setSkipPermissions(false);
       setProjectSortOrder('name');
+    }
+  };
+
+  // Fetch Claude SDK configuration
+  const fetchClaudeSdkConfig = async () => {
+    try {
+      const response = await authenticatedFetch('/api/settings/claude-sdk');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          setClaudeSdkPath(data.pathToClaudeCodeExecutable || '');
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching Claude SDK config:', error);
+    }
+  };
+
+  // Save Claude SDK configuration
+  const saveClaudeSdkConfig = async () => {
+    try {
+      const response = await authenticatedFetch('/api/settings/claude-sdk', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          pathToClaudeCodeExecutable: claudeSdkPath
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          // Show success notification
+          setSaveStatus('success');
+          setTimeout(() => setSaveStatus(null), 3000);
+        }
+      } else {
+        setSaveStatus('error');
+        setTimeout(() => setSaveStatus(null), 3000);
+      }
+    } catch (error) {
+      console.error('Error saving Claude SDK config:', error);
+      setSaveStatus('error');
+      setTimeout(() => setSaveStatus(null), 3000);
     }
   };
 
@@ -1362,6 +1414,9 @@ function Settings({ isOpen, onClose, projects = [], initialTab = 'agents' }) {
                           selectedAgent === 'cursor' ? handleCursorLogin :
                           handleCodexLogin
                         }
+                        claudeSdkPath={claudeSdkPath}
+                        onClaudeSdkPathChange={setClaudeSdkPath}
+                        onClaudeSdkPathSave={saveClaudeSdkConfig}
                       />
                     )}
 

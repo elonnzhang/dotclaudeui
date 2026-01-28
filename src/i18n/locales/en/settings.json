@@ -303,6 +303,12 @@
       "button": "Login",
       "reLoginButton": "Re-login"
     },
+    "claudeSdkPath": {
+      "label": "Claude SDK Executable Path",
+      "description": "Path to the Claude Code executable (e.g., /usr/local/bin/claude-code or ducc)",
+      "hint": "Leave empty to use the default path",
+      "save": "Save"
+    },
     "error": "Error: {{error}}"
   },
   "permissions": {
