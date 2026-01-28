@@ -1,5 +1,8 @@
 import express from 'express';
-import { apiKeysDb, credentialsDb } from '../database/db.js';
+import { apiKeysDb, credentialsDb, userDb } from '../database/db.js';
+import path from 'path';
+import fs from 'fs';
+import os from 'os';
 
 const router = express.Router();
 
@@ -172,6 +175,83 @@ router.patch('/credentials/:credentialId/toggle', async (req, res) => {
   } catch (error) {
     console.error('Error toggling credential:', error);
     res.status(500).json({ error: 'Failed to toggle credential' });
+  }
+});
+
+// ===============================
+// Claude SDK Configuration
+// ===============================
+
+const CONFIG_DIR = path.join(os.homedir(), '.claude');
+const SDK_CONFIG_FILE = path.join(CONFIG_DIR, 'sdk-config.json');
+
+// Helper function to read SDK config
+function readSdkConfig() {
+  try {
+    if (fs.existsSync(SDK_CONFIG_FILE)) {
+      const data = fs.readFileSync(SDK_CONFIG_FILE, 'utf8');
+      return JSON.parse(data);
+    }
+  } catch (error) {
+    console.error('Error reading SDK config:', error);
+  }
+  return {};
+}
+
+// Helper function to write SDK config
+function writeSdkConfig(config) {
+  try {
+    // Ensure directory exists
+    if (!fs.existsSync(CONFIG_DIR)) {
+      fs.mkdirSync(CONFIG_DIR, { recursive: true });
+    }
+    fs.writeFileSync(SDK_CONFIG_FILE, JSON.stringify(config, null, 2), 'utf8');
+    return true;
+  } catch (error) {
+    console.error('Error writing SDK config:', error);
+    return false;
+  }
+}
+
+// Get Claude SDK configuration
+router.get('/claude-sdk', async (req, res) => {
+  try {
+    const config = readSdkConfig();
+    res.json({
+      success: true,
+      pathToClaudeCodeExecutable: config.pathToClaudeCodeExecutable || ''
+    });
+  } catch (error) {
+    console.error('Error fetching Claude SDK config:', error);
+    res.status(500).json({ error: 'Failed to fetch Claude SDK configuration' });
+  }
+});
+
+// Update Claude SDK configuration
+router.put('/claude-sdk', async (req, res) => {
+  try {
+    const { pathToClaudeCodeExecutable } = req.body;
+
+    // Read existing config
+    const config = readSdkConfig();
+
+    // Update the path
+    config.pathToClaudeCodeExecutable = pathToClaudeCodeExecutable || '';
+
+    // Save config
+    const success = writeSdkConfig(config);
+
+    if (success) {
+      res.json({
+        success: true,
+        pathToClaudeCodeExecutable: config.pathToClaudeCodeExecutable
+      });
+    } else {
+      res.status(500).json({ error: 'Failed to save configuration' });
+    }
+  } catch (error) {
+    console.error('Error updating Claude SDK config:', error);
+    res.status(500).json({ error: 'Failed to update Claude SDK configuration' });
   }
 });
 

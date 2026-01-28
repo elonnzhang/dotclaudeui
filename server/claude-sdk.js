@@ -17,9 +17,27 @@ import { query } from '@anthropic-ai/claude-agent-sdk';
 // This keeps parallel tool approvals from colliding; it does not add any crypto/security guarantees.
 import crypto from 'crypto';
 import { promises as fs } from 'fs';
+import fsSync from 'fs';
 import path from 'path';
 import os from 'os';
 import { CLAUDE_MODELS } from '../shared/modelConstants.js';
+
+// Configuration file paths
+const CONFIG_DIR = path.join(os.homedir(), '.claude');
+const SDK_CONFIG_FILE = path.join(CONFIG_DIR, 'sdk-config.json');
+
+// Helper function to read SDK config
+function readSdkConfig() {
+  try {
+    if (fsSync.existsSync(SDK_CONFIG_FILE)) {
+      const data = fsSync.readFileSync(SDK_CONFIG_FILE, 'utf8');
+      return JSON.parse(data);
+    }
+  } catch (error) {
+    console.error('Error reading SDK config:', error);
+  }
+  return {};
+}
 
 // Session tracking: Map of session IDs to active query instances
 const activeSessions = new Map();
@@ -51,7 +69,7 @@ function createRequestId() {
 function waitForToolApproval(requestId, options = {}) {
   const { timeoutMs = TOOL_APPROVAL_TIMEOUT_MS, signal, onCancel } = options;
 
-  return new Promise(resolve => {
+  return new Promise((resolve) => {
     let settled = false;
 
     const finalize = (decision) => {
@@ -152,6 +170,22 @@ function mapCliOptionsToSDK(options = {}) {
 
   const sdkOptions = {};
 
+  // Read pathToClaudeCodeExecutable from config or options
+  if (options.pathToClaudeCodeExecutable) {
+    sdkOptions.pathToClaudeCodeExecutable = options.pathToClaudeCodeExecutable;
+  } else {
+    // Try to read from config file
+    const config = readSdkConfig();
+    if (config.pathToClaudeCodeExecutable) {
+      sdkOptions.pathToClaudeCodeExecutable = config.pathToClaudeCodeExecutable;
+    } else {
+      // Use default fallback
+      sdkOptions.pathToClaudeCodeExecutable = '/Users/elon/.comate/baidu-cc/bin/ducc';
+    }
+  }
+
+  console.log(`Using Claude Code executable: ${sdkOptions.pathToClaudeCodeExecutable}`);
+
   // Map working directory
   if (cwd) {
     sdkOptions.cwd = cwd;
@@ -166,7 +200,7 @@ function mapCliOptionsToSDK(options = {}) {
   const settings = toolsSettings || {
     allowedTools: [],
     disallowedTools: [],
-    skipPermissions: false
+    skipPermissions: false,
   };
 
   // Handle tool permissions
@@ -198,13 +232,14 @@ function mapCliOptionsToSDK(options = {}) {
 
   // Map model (default to sonnet)
   // Valid models: sonnet, opus, haiku, opusplan, sonnet[1m]
-  sdkOptions.model = options.model || CLAUDE_MODELS.DEFAULT;
+  // sdkOptions.model = options.model || CLAUDE_MODELS.DEFAULT;
+  sdkOptions.model = CLAUDE_MODELS.AUTO;
   console.log(`Using model: ${sdkOptions.model}`);
 
   // Map system prompt configuration
   sdkOptions.systemPrompt = {
     type: 'preset',
-    preset: 'claude_code'  // Required to use CLAUDE.md
+    preset: 'claude_code', // Required to use CLAUDE.md
   };
 
   // Map setting sources for CLAUDE.md loading
@@ -232,7 +267,7 @@ function addSession(sessionId, queryInstance, tempImagePaths = [], tempDir = nul
     startTime: Date.now(),
     status: 'active',
     tempImagePaths,
-    tempDir
+    tempDir,
   });
 }
 
@@ -305,11 +340,13 @@ function extractTokenBudget(resultMessage) {
   // This is the user's budget limit, not the model's context window
   const contextWindow = parseInt(process.env.CONTEXT_WINDOW) || 160000;
 
-  console.log(`Token calculation: input=${inputTokens}, output=${outputTokens}, cache=${cacheReadTokens + cacheCreationTokens}, total=${totalUsed}/${contextWindow}`);
+  console.log(
+    `Token calculation: input=${inputTokens}, output=${outputTokens}, cache=${cacheReadTokens + cacheCreationTokens}, total=${totalUsed}/${contextWindow}`,
+  );
 
   return {
     used: totalUsed,
-    total: contextWindow
+    total: contextWindow,
   };
 }
 
@@ -382,16 +419,12 @@ async function cleanupTempFiles(tempImagePaths, tempDir) {
   try {
     // Delete individual temp files
     for (const imagePath of tempImagePaths) {
-      await fs.unlink(imagePath).catch(err =>
-        console.error(`Failed to delete temp image ${imagePath}:`, err)
-      );
+      await fs.unlink(imagePath).catch((err) => console.error(`Failed to delete temp image ${imagePath}:`, err));
     }
 
     // Delete temp directory
     if (tempDir) {
-      await fs.rm(tempDir, { recursive: true, force: true }).catch(err =>
-        console.error(`Failed to delete temp directory ${tempDir}:`, err)
-      );
+      await fs.rm(tempDir, { recursive: true, force: true }).catch((err) => console.error(`Failed to delete temp directory ${tempDir}:`, err));
     }
 
     console.log(`Cleaned up ${tempImagePaths.length} temp image files`);
@@ -499,16 +532,12 @@ async function queryClaudeSDK(command, options = {}, ws) {
         return { behavior: 'allow', updatedInput: input };
       }
 
-      const isDisallowed = (sdkOptions.disallowedTools || []).some(entry =>
-        matchesToolPermission(entry, toolName, input)
-      );
+      const isDisallowed = (sdkOptions.disallowedTools || []).some((entry) => matchesToolPermission(entry, toolName, input));
       if (isDisallowed) {
         return { behavior: 'deny', message: 'Tool disallowed by settings' };
       }
 
-      const isAllowed = (sdkOptions.allowedTools || []).some(entry =>
-        matchesToolPermission(entry, toolName, input)
-      );
+      const isAllowed = (sdkOptions.allowedTools || []).some((entry) => matchesToolPermission(entry, toolName, input));
       if (isAllowed) {
         return { behavior: 'allow', updatedInput: input };
       }
@@ -519,7 +548,7 @@ async function queryClaudeSDK(command, options = {}, ws) {
         requestId,
         toolName,
         input,
-        sessionId: capturedSessionId || sessionId || null
+        sessionId: capturedSessionId || sessionId || null,
       });
 
       // Wait for the UI; if the SDK cancels, notify the UI so it can dismiss the banner.
@@ -531,9 +560,9 @@ async function queryClaudeSDK(command, options = {}, ws) {
             type: 'claude-permission-cancelled',
             requestId,
             reason,
-            sessionId: capturedSessionId || sessionId || null
+            sessionId: capturedSessionId || sessionId || null,
           });
-        }
+        },
       });
       if (!decision) {
         return { behavior: 'deny', message: 'Permission request timed out' };
@@ -551,7 +580,7 @@ async function queryClaudeSDK(command, options = {}, ws) {
             sdkOptions.allowedTools.push(decision.rememberEntry);
           }
           if (Array.isArray(sdkOptions.disallowedTools)) {
-            sdkOptions.disallowedTools = sdkOptions.disallowedTools.filter(entry => entry !== decision.rememberEntry);
+            sdkOptions.disallowedTools = sdkOptions.disallowedTools.filter((entry) => entry !== decision.rememberEntry);
           }
         }
         return { behavior: 'allow', updatedInput: decision.updatedInput ?? input };
@@ -563,7 +592,7 @@ async function queryClaudeSDK(command, options = {}, ws) {
     // Create SDK query instance
     const queryInstance = query({
       prompt: finalCommand,
-      options: sdkOptions
+      options: sdkOptions,
     });
 
     // Track the query instance for abort capability
@@ -576,7 +605,6 @@ async function queryClaudeSDK(command, options = {}, ws) {
     for await (const message of queryInstance) {
       // Capture session ID from first message
       if (message.session_id && !capturedSessionId) {
-
         capturedSessionId = message.session_id;
         addSession(capturedSessionId, queryInstance, tempImagePaths, tempDir);
 
@@ -590,7 +618,7 @@ async function queryClaudeSDK(command, options = {}, ws) {
           sessionCreatedSent = true;
           ws.send({
             type: 'session-created',
-            sessionId: capturedSessionId
+            sessionId: capturedSessionId,
           });
         } else {
           console.log('Not sending session-created. sessionId:', sessionId, 'sessionCreatedSent:', sessionCreatedSent);
@@ -604,7 +632,7 @@ async function queryClaudeSDK(command, options = {}, ws) {
       ws.send({
         type: 'claude-response',
         data: transformedMessage,
-        sessionId: capturedSessionId || sessionId || null
+        sessionId: capturedSessionId || sessionId || null,
       });
 
       // Extract and send token budget updates from result messages
@@ -615,7 +643,7 @@ async function queryClaudeSDK(command, options = {}, ws) {
           ws.send({
             type: 'token-budget',
             data: tokenBudget,
-            sessionId: capturedSessionId || sessionId || null
+            sessionId: capturedSessionId || sessionId || null,
           });
         }
       }
@@ -635,10 +663,9 @@ async function queryClaudeSDK(command, options = {}, ws) {
       type: 'claude-complete',
       sessionId: capturedSessionId,
       exitCode: 0,
-      isNewSession: !sessionId && !!command
+      isNewSession: !sessionId && !!command,
     });
     console.log('claude-complete event sent');
-
   } catch (error) {
     console.error('SDK query error:', error);
 
@@ -654,7 +681,7 @@ async function queryClaudeSDK(command, options = {}, ws) {
     ws.send({
       type: 'claude-error',
       error: error.message,
-      sessionId: capturedSessionId || sessionId || null
+      sessionId: capturedSessionId || sessionId || null,
     });
 
     throw error;
@@ -715,10 +742,4 @@ function getActiveClaudeSDKSessions() {
 }
 
 // Export public API
-export {
-  queryClaudeSDK,
-  abortClaudeSDKSession,
-  isClaudeSDKSessionActive,
-  getActiveClaudeSDKSessions,
-  resolveToolApproval
-};
+export { queryClaudeSDK, abortClaudeSDKSession, isClaudeSDKSessionActive, getActiveClaudeSDKSessions, resolveToolApproval };

@@ -1,5 +1,6 @@
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
+import { Input } from '../ui/input';
 import { LogIn } from 'lucide-react';
 import ClaudeLogo from '../ClaudeLogo';
 import CursorLogo from '../CursorLogo';
@@ -39,7 +40,14 @@ const agentConfig = {
   },
 };
 
-export default function AccountContent({ agent, authStatus, onLogin }) {
+export default function AccountContent({
+  agent,
+  authStatus,
+  onLogin,
+  claudeSdkPath,
+  onClaudeSdkPathChange,
+  onClaudeSdkPathSave
+}) {
   const { t } = useTranslation('settings');
   const config = agentConfig[agent];
   const { Logo } = config;
@@ -121,6 +129,41 @@ export default function AccountContent({ agent, authStatus, onLogin }) {
           )}
         </div>
       </div>
+
+      {/* Claude SDK Path Configuration - Only show for Claude agent */}
+      {agent === 'claude' && (
+        <div className="border border-border rounded-lg p-4 bg-card">
+          <div className="space-y-3">
+            <div>
+              <label className="text-sm font-medium text-foreground">
+                {t('agents.claudeSdkPath.label', 'Claude SDK Executable Path')}
+              </label>
+              <p className="text-xs text-muted-foreground mt-1">
+                {t('agents.claudeSdkPath.description', 'Path to the Claude Code executable (e.g., /usr/local/bin/claude-code or ducc)')}
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Input
+                type="text"
+                value={claudeSdkPath || ''}
+                onChange={(e) => onClaudeSdkPathChange?.(e.target.value)}
+                placeholder="/usr/local/bin/claude-code"
+                className="flex-1 font-mono text-sm"
+              />
+              <Button
+                onClick={onClaudeSdkPathSave}
+                size="sm"
+                variant="default"
+              >
+                {t('agents.claudeSdkPath.save', 'Save')}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {t('agents.claudeSdkPath.hint', 'Leave empty to use the default path')}
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
