@@ -9,7 +9,7 @@ A desktop and mobile UI for [Claude Code](https://docs.anthropic.com/en/docs/cla
  [English](./README.md) | [中文](./README.zh-CN.md)
 
 ## Screenshots
-.
+
 <div align="center">
   
 <table>
