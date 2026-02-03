@@ -513,6 +513,17 @@ app.post('/api/projects/create', authenticateToken, async (req, res) => {
   }
 });
 
+const expandWorkspacePath = (inputPath) => {
+  if (!inputPath) return inputPath;
+  if (inputPath === '~') {
+    return WORKSPACES_ROOT;
+  }
+  if (inputPath.startsWith('~/') || inputPath.startsWith('~\\')) {
+    return path.join(WORKSPACES_ROOT, inputPath.slice(2));
+  }
+  return inputPath;
+};
+
 // Browse filesystem endpoint for project suggestions - uses existing getFileTree
 app.get('/api/browse-filesystem', authenticateToken, async (req, res) => {
   try {
@@ -579,52 +590,43 @@ app.get('/api/browse-filesystem', authenticateToken, async (req, res) => {
 });
 
 app.post('/api/create-folder', authenticateToken, async (req, res) => {
-    try {
-        const { path: folderPath } = req.body;
-        if (!folderPath) {
-            return res.status(400).json({ error: 'Path is required' });
-        }
-        const homeDir = os.homedir();
-        const targetPath = path.resolve(folderPath.replace('~', homeDir));
-        const normalizedPath = path.normalize(targetPath);
-        const comparePath = normalizedPath.toLowerCase();
-        const forbiddenLower = FORBIDDEN_PATHS.map(p => p.toLowerCase());
-        if (forbiddenLower.includes(comparePath) || comparePath === '/') {
-            return res.status(403).json({ error: 'Cannot create folders in system directories' });
-        }
-        for (const forbidden of forbiddenLower) {
-            if (comparePath.startsWith(forbidden + path.sep)) {
-                if (forbidden === '/var' && (comparePath.startsWith('/var/tmp') || comparePath.startsWith('/var/folders'))) {
-                    continue;
-                }
-                return res.status(403).json({ error: `Cannot create folders in system directory: ${forbidden}` });
-            }
-        }
-        const parentDir = path.dirname(targetPath);
-        try {
-            await fs.promises.access(parentDir);
-        } catch (err) {
-            return res.status(404).json({ error: 'Parent directory does not exist' });
-        }
-        try {
-            await fs.promises.access(targetPath);
-            return res.status(409).json({ error: 'Folder already exists' });
-        } catch (err) {
-            // Folder doesn't exist, which is what we want
-        }
-        try {
-            await fs.promises.mkdir(targetPath, { recursive: false });
-            res.json({ success: true, path: targetPath });
-        } catch (mkdirError) {
-            if (mkdirError.code === 'EEXIST') {
-                return res.status(409).json({ error: 'Folder already exists' });
-            }
-            throw mkdirError;
-        }
-    } catch (error) {
-        console.error('Error creating folder:', error);
-        res.status(500).json({ error: 'Failed to create folder' });
+  try {
+    const { path: folderPath } = req.body;
+    if (!folderPath) {
+      return res.status(400).json({ error: 'Path is required' });
     }
+    const expandedPath = expandWorkspacePath(folderPath);
+    const resolvedInput = path.resolve(expandedPath);
+    const validation = await validateWorkspacePath(resolvedInput);
+    if (!validation.valid) {
+      return res.status(403).json({ error: validation.error });
+    }
+    const targetPath = validation.resolvedPath || resolvedInput;
+    const parentDir = path.dirname(targetPath);
+    try {
+      await fs.promises.access(parentDir);
+    } catch (err) {
+      return res.status(404).json({ error: 'Parent directory does not exist' });
+    }
+    try {
+      await fs.promises.access(targetPath);
+      return res.status(409).json({ error: 'Folder already exists' });
+    } catch (err) {
+      // Folder doesn't exist, which is what we want
+    }
+    try {
+      await fs.promises.mkdir(targetPath, { recursive: false });
+      res.json({ success: true, path: targetPath });
+    } catch (mkdirError) {
+      if (mkdirError.code === 'EEXIST') {
+        return res.status(409).json({ error: 'Folder already exists' });
+      }
+      throw mkdirError;
+    }
+  } catch (error) {
+    console.error('Error creating folder:', error);
+    res.status(500).json({ error: 'Failed to create folder' });
+  }
 });
 
 // Read file content endpoint
